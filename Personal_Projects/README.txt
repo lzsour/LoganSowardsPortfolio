@@ -1,0 +1,1 @@
+This directory is a work in progress. Eventually it will be updated to contain personal data analysis projects. For now, please refer to the Classwork directory to see examples of prior data analysis.

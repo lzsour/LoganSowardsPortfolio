@@ -1,0 +1,170 @@
+---
+title: "RandomForestSBA"
+author: "Logan Sowards"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Tree Model HW
+Reproducable Code
+Data: California SBA Loans
+Data Source: https://www.tandfonline.com/doi/suppl/10.1080/10691898.2018.1434342/suppl_file/ujse_a_1434342_sm1547.zip
+
+READ DATA:
+```{r}
+temp <- tempfile()
+download.file("https://www.tandfonline.com/doi/suppl/10.1080/10691898.2018.1434342/suppl_file/ujse_a_1434342_sm1547.zip",temp)
+default <- read.csv(unz(temp, "SBAcase.11.13.17.csv"))
+unlink(temp)
+
+#find names and indexes of columns
+names(default)
+```
+
+
+
+
+
+
+FILTER DATA:
+```{r}
+# Make Dataset more useful by removing columns: ( MIS_Status[25], ChgOffDate[21] and
+# ChgOffPrinGr[26], Selected[1], Name[3], Recession[32], daysterm[33], City[4], State[5],
+# Bank[7], xx[34])
+SBAfilter <- default[,-c(1,3,4,5,7,21,25,26,32,33,34)]
+
+# Check if proper columns removed
+names(SBAfilter)
+
+
+# Feature Engineering: Add columns for first 2 and 3 digits from Zipcode,
+# first 3 and 4 digits from NAICS code (check for more specific explanatory variables)
+SBAfilter$Zip2Digit  <- floor(SBAfilter$Zip / 1000) # Dividing by 1000 makes to a decimal and floor removes the decimals
+SBAfilter$Zip3Digit  <- floor(SBAfilter$Zip / 100)
+SBAfilter$NAICS3digit <- floor(SBAfilter$NAICS / 1000)
+SBAfilter$NAICS4digit <- floor(SBAfilter$NAICS / 100)
+
+
+# Filter out rows w/ any values of NewExist that are not 1 or 2
+# and any missing values of DisbursementDate
+SBAfilter <- SBAfilter[c(SBAfilter$NewExist == 1 | SBAfilter$NewExist == 2), ] # | is the or operand
+SBAfilter <- SBAfilter[!is.na(SBAfilter$DisbursementDate), ] #!is.na() returns areas that are not empty
+
+# Check if Default is a factor and if not, convert to a factor
+is.factor(SBAfilter$Default)
+SBAfilter$Default <- factor(SBAfilter$Default)
+is.factor(SBAfilter$Default)
+
+# Show the dimensions of the data to show it is correct
+dim(SBAfilter)
+table(SBAfilter$Default)
+```
+
+
+
+IDENTIFY VARIABLES:
+
+Default (if the loan was paid or charged off) is the response variable. It is categorical.
+
+Quantitative Explanatory Variables: LoanNr_ChkDgt, Zip, Zip2Digit, Zip3Digit, NAICS, NAICS3digit, 
+NAICS4digit, Term, NoEmp, CreateJob, RetainedJob, DisbursementGross, BalanceGross, GrAppv,
+SBA_Appv, Portion
+
+Categorical Explanatory Variables: BankState, ApprovalDate, ApprovalFY, NewExist, FranchiseCode, 
+UrbanRurual, RevLineCr, LowDoc, DisbursementDate, New, RealEstate
+
+
+
+CREATE MODEL DATASET:
+```{r}
+set.seed(20)
+
+# construct model dataset (all bads, sample of goods b/c bads are rarer than good in this set)
+# bad = default(1), goods = paid(0)
+
+# Collect all bads
+all.bad <- subset(SBAfilter, Default == 1) 
+n.bads <- dim(all.bad)[1]
+
+# SRS of goods
+all.good <- subset(SBAfilter, Default == 0)
+n.goods <- dim(all.good)[1]
+rows.good <- sample(n.goods, n.bads)
+sample.good <- all.good[rows.good,]
+
+#put goods and bads together
+loan.model <- rbind(all.bad, sample.good)
+
+
+# Test that dimensions of model are correct
+dim(loan.model)
+
+# confirm loan.model has half goods and half bads
+table(loan.model$Default)
+```
+
+
+CREATE TRAIN AND TEST DATASETS:
+```{r}
+n.model <- dim(loan.model)[1]
+
+# 70% train, 30% test good rule of thumb
+0.7*n.model #960.4
+train.rows <- sample(n.model, 960)
+loan.train <- loan.model[train.rows,]
+
+loan.test <- loan.model[-train.rows,]
+
+# confirm train and test are similar
+table(loan.train$Default)
+table(loan.test$Default)
+```
+
+
+RANDOM FOREST MODEL:
+```{r}
+# random forest library
+library(randomForest)
+
+# Make a prediction of a future obs
+
+names(loan.train) # Check which column the response is in so you can take it out of the tree 
+
+
+loan.out <- randomForest(x = loan.train[,-24], y=loan.train$Default, # use -24 to take out the response variable which is in -24
+                           xtest = loan.test[,-24], ytest = loan.test$Default,
+                           keep.forest=TRUE, # store trees for future prediction
+                           replace = TRUE, # use bootstrap sampling (SRS)
+                           ntree = 50, # number of trees (50 is generally a good number)
+                           mtry = 10, # lets other numbers have a shot to be a tree. Rule of thumb is p/3 (p = number of explanatory variables, round down)
+                           nodesize = 20) #how many in each bin minimum, needs to be biggger in not stratifying 
+
+loan.out # Want MSE and % Var Explained to be about the same for each, we also want low MSE
+# Error rate: How many times were we wrong
+# Want test and train error rate to be about the same. 
+
+```
+
+
+PLOTS:
+```{r}
+#shows the use of trees in prediction
+plot(loan.out)
+```
+
+
+```{r}
+# Does the model make sense? Intuition of what matters in the model
+varImpPlot(loan.out)
+```
+
+
+SOME CONCLUSIONS:
+Term, ApprovalDate, and SBA_Appv appear to be the three most influential values
+
+This model neither confirms nor refutes that urban loans are more risky. 
+It suggests that Urban vs Rural loans may slightly help predict if a loan will be prepaid
+However it does not suggest which one is more risky.
