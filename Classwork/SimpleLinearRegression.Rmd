@@ -1,0 +1,204 @@
+---
+title: "SimpleLinearRegressionPeas"
+author: "Logan Sowards"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+DATA:
+Data is the results of Galton's 1877 pea experiment
+```{r}
+library("ggplot2")
+
+# Data read in from a table "https://grimshawville.byu.edu/SLR.pdf"
+peaData <- data.frame("parentSize" = c(0.21, 0.20, 0.19, 0.18, 0.17, 0.16, 0.15), "offspringSize" = c(0.1726, 0.1707, 0.1637, 0.1640, 0.1613, 0.1617, 0.1598))
+
+str(peaData)
+```
+
+EDA:
+strength, direction, anything unusual?
+```{r}
+# EDA
+
+cor(peaData[[1]], peaData[[2]])
+
+```
+strong positive correlation, parent diameter increases and diameter of the child also increases
+does not appear to be anything unusual
+
+
+
+
+PLOT DATA:
+```{r}
+# Plot the data
+plot(x = peaData[[1]], y = peaData[[2]], main = "Parent vs Offspring Pea Diameter",
+     xlab = "Parent Diameter (in)", ylab = "Offspring Diameter (in)")
+
+# Plot the regression line
+abline(lm(peaData[[2]] ~ peaData[[1]]))
+```
+
+
+
+REREADING DATASET:
+```{r}
+
+peas <- numeric()
+peas$parent <- peaData[[1]]
+peas$offspring <- peaData[[2]]
+
+str(peas)
+peas <- data.frame(peas)
+```
+
+
+ANALYSIS:
+
+Response variable: Offspring Diameter in Inches
+Explanatory variable: Parent Diameter in Inches
+
+Model: Offspring Diameter = beta0 + (beta1 * Parent Diameter) + epsilon
+           where epsilon ~ N(0, sigma^2) 
+           where N(0, sigma^2) is a Normal Distribution with Mean of 0, and Variance of sigma^2
+
+Practical explanation:
+     additive model (constant mean change, appears linear)
+     constant variance (same variance for all x)
+     after adjusting for  the effect of X we would see a normal distribution
+     outcome of one observation has no effect on the outcome of another (independent)
+
+
+CREATING MODEL
+```{r}
+# Fit Model (estimate)
+# offspring ~ parent: what is the offspring given the parent
+peas.out <- lm(offspring~parent, data = peas)
+
+# report estimates and standard errors
+summary(peas.out)
+```
+
+
+INTERPRET DATA:
+For every increase of 1 inch of the parent diameter, the offspring diameter is expected to be greater by 0.21 inches
+For every increase in .1 inches, it is expected that the offspring will increase by 0.021 inches
+
+beta1 is the effect of the parent on the offspring, the slope of the line, the inheritance effect
+
+
+TESTING STATISTICAL SIGNIFICANCE:
+Is there a statistically significant inheritance effect?
+
+1) t-test
+Ho: no inheritance effect <===> Ho: beta1 = 0
+
+test statistic: 5.438 (found in summary)
+p-value: 0.0029 (also found in summary, 4 decimals standard)
+
+formal  conclusion (Proof by contradiction): We reject Ho in favor of Ha: beta1 does not equal zero at the .01 significance level
+informal conclusion: There is a statistically significant inheritance effect
+
+
+
+2) ANOVA F-test (compare and contrast 2 models [is an effect or not an effect?], measures residual)
+Ho: no inheritance effect <===> Ho: beta1 = 0
+```{r}
+anova(peas.out)
+```
+
+test statistics 29.58 (F-statistic also found in summary)
+p = 0.0029 (found in summary or anova)
+formal conclusion: We reject ho in favor of Ha: Beta1 does nto equal zero at the 0.01 significance level
+informal conclusion: There is a statistically significant inheritance effect.
+
+
+
+3) 95% Confidence interval on beta1
+```{r}
+confint(peas.out)
+```
+The 95% Confidence Interval for beta 1 is (0.111 to 0.309) inches
+                                          (0.210 +/- 0.099) 
+
+formal conclusion: since 0 is not in the interval, we would reject Ho: beta1 = 0, 
+         in favor of Ha: beta1 not equal to 0 at the 0.05 significance level
+informal conclusion: There is a statistically significant inheritance effect.
+
+CONCLUSION: 
+Based on the data provided there appears to be a statistically significant inheritance 
+effect between the diameter of a Parent Pea and the Diameter of the offspring pea. 
+(95% CI: 0.111 to 0.309, p-value = 0.0029)
+
+
+
+GRAPH PLOT AND UNCERTAINTY:
+```{r}
+qplot(x = parentSize, y = offspringSize, data = peaData, 
+      geom = "smooth", formula = y~x, method = "lm", se = TRUE, 
+      xlab = "Parent Pea Diameter (in)", ylab = "Offspring Pea Diameter (in)")
+```
+
+PREDICTION WITH MODEL:
+```{r}
+summary(peas.out)
+
+# predicted(estimated) model:
+#   predicted offspring diameter = 0.127 + 0.210 * Parent Daimeter
+
+# 95% Prediction Interval for a parent with 0.18 diameter
+predict(peas.out, newdata = data.frame(parent = 0.18), interval = "prediction")
+
+# 95% CI E(Offspring Diameter | Parent Diameter = 0.20)
+predict(peas.out, newdata = data.frame(parent = 0.20), interval = "confidence")
+```
+
+
+
+PLOTTING UNCERTAINTY:
+```{r}
+plot.df <- cbind(peas, predict(peas.out, interval = "prediction"))
+ggplot(plot.df, aes(parent, offspring)) + 
+        xlab("Diameter of Parent Pea") +
+        ylab("Diameter of Offspring Pea") +
+        geom_point() +
+        geom_line(aes(y=fit), color = "royalblue") +
+        geom_line(aes(y=lwr), color = "red", linetype = "dashed") +
+        geom_line(aes(y=upr), color = "red", linetype = "dashed")
+```
+
+
+
+REPORTING R^2:
+  R^2 = 0.8554 (found in summary)
+  summarizes prediction performance (larger is better)
+  % of variation in Y that is explained by the model
+  One number summary of prediction performance
+  Model seems to predict Offspring fairly well
+
+
+DATA FEATURES: 
+  Two columns (one a continuous response variable and one a continuous 
+  explanatory variable) and rows of observations (either a randomized experiment or an 
+  observational study)
+
+Model Advantages: model with interpretable estimates of model elements
+                 statistical significance of effect of explanatory variable on the response variable
+                 estimate of effect with confidence interval
+                 predictions with prediction interval 
+                 graphics that support inference conclusions and prediction performance
+                 Prediction performance seems to be pretty strong
+
+Model Weaknesses: only one explanatory variable
+                 explanatory variable must be continuous
+                 model assumptions must be satisfied: additive model (straight line), 
+                     constant variation after adjusting for effect of X, outcome of one 
+                     observation doesn't effect outcome of another observation, variation is 
+                     normally distributed
+                 Data only useful within a certain range

@@ -1,0 +1,116 @@
+---
+title: "MonthlyTimeSeriesEnergyUS"
+author: "Logan Sowards"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+GOAL:
+Read in US Energy Consumption data to forecast future energy consumption
+
+READ IN DATA:
+  US Residential Energy Consumption Since 1991
+  Data re-downloaded 2/24/21 (Original Code from 1/15/20)
+  https://www.eia.gov/totalenergy/data/browser/?tbl=T02.02#/?f=M
+  http://www.eia.gov/totalenergy/data/monthly/index.cfm#consumption
+```{r}
+data1 <- read.csv("http://www.eia.gov/totalenergy/data/browser/csv.cfm?tbl=T02.01")
+
+# subset to TERCBUS Total Energy Consumed by the Residential Sector
+data2 <- subset(data1, MSN == "TERCBUS")
+
+# subset to "your lifetime"
+data3 <- subset(data2, data2$YYYYMM > 199100)
+
+# remove yearly total (coded "month 13", every 13th obs)
+data4 <- subset(data3, data3$YYYYMM %% 100 != 13)
+
+energy <- data4$Value
+```
+
+
+EDA:
+```{r}
+plot(energy,  type = "b", main = "US Residential Energy Consumption",
+     ylab = "Energy Consumption (trillion Btu)", xlab = "Months Since January 1991")
+
+# Notice that in addition to a slight increasing trend, there is also a seasonal trend (12 month cycle)
+tail(energy)
+```
+
+
+
+VISUALIZE MONTHLY PATTERN:
+```{r}
+plot(1:12,energy[1:12],
+     ylim=c(1000,3000),
+     type="b",
+     main = "US Residential Energy Consumption by Month",
+     ylab="US Residential Energy (trillion Btu)",
+     xlab="Month")
+for(i in 1:27){
+  lines(1:12,energy[12*i + (1:12)],type="b")
+}
+```
+
+
+
+ANALYSIS:
+```{r}
+#Model: ARIMA (1,1,1) x (1,1,1)_12
+library(astsa)
+energy.out <- sarima(energy, 1,1,1, 1,1,1, 12)
+
+energy.out$ttable
+
+```
+
+
+PREDICTION:
+```{r}
+#Predict Energy Usage up to end of 2022
+
+# determine where data ends
+tail(data4)
+#data ends in November 2020
+
+future.month <- c(12, rep(1:12, 2))
+future.year <- c(2020, rep(2021:2022, each = 12))
+
+# Predictions
+energy.future <- sarima.for(energy, 1,1,1, 1,1,1, 12, n.ahead = length(future.year))
+```
+
+
+TABLE OF PREDICTION AND CONFIDENCE INTERVALS:
+```{r}
+# Compute 95% prediction intervals
+L = energy.future$pred - 2*energy.future$se
+U = energy.future$pred + 2*energy.future$se
+
+# Table of predictions
+cbind(future.month, future.year, energy.future$pred, L, U)
+```
+
+
+ANALYSIS:
+
+Research Task: Prediction (2 years in the future)
+
+Data Features: Seasonal Time Series (Monthly Data)
+
+Strengths: Incorporated Seasonal Pattern
+          More Frequent Data
+          Predict with Prediction Intervals
+          Prediction matches intuition
+          long and short memory
+
+
+Weaknesses: We know seasonality (We need to know in order for model to make sense)
+            "Overall trend" is really "every month has a trend"
+            Graph doesn't suggest the reasons for the trend
+            Assumes past predicts future
